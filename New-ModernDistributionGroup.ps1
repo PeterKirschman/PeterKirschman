@@ -81,14 +81,13 @@ function New-ModernDistributionGroup {
     begin {
         $BeginError = @()
         Write-Verbose "Checking prerequisites are loaded"
-        if (-not (Get-Command New-UnifiedGroup -ErrorAction SilentlyContinue)) {
+        #Verify connection to Exchange Online
+        if (-not (Get-ConnectionInformation -ErrorAction SilentlyContinue)) {
             $BeginError += "Not connected to ExchangeOnline"
         }
 
-        try { 
-            Get-MGContext -ErrorAction Stop | Out-Null
-        } 
-        catch [Microsoft.Open.Azure.AD.CommonLibrary.AadNeedAuthenticationException] { 
+        #Verify connection to Mg Graph
+        if (-not (Get-MgContext -ErrorAction SilentlyContinue)) {
             $BeginError += "Not connected to MGGraph"
         }
 
