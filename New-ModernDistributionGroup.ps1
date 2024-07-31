@@ -67,7 +67,7 @@ function New-ModernDistributionGroup {
             ValueFromPipelineByPropertyName = $true)]
         [string]
         $Description,
-        [Parameter(
+        [Parameter(Mandatory = $true,
             ValueFromPipeline = $true,
             ValueFromPipelineByPropertyName = $true)]
         [string]
@@ -76,9 +76,25 @@ function New-ModernDistributionGroup {
             ValueFromPipeline = $true,
             ValueFromPipelineByPropertyName = $true)]
         [string]
-        $ProxyAddress
+        $ProxyAddress,
+        [Parameter(
+            ValueFromPipeline = $true,
+            ValueFromPipelineByPropertyName = $true)]
+        [string]
+        $ReceiveFromExternal,
+        [Parameter(
+            ValueFromPipeline = $true,
+            ValueFromPipelineByPropertyName = $true)]
+        [switch]
+        $ShowInOutlook,
+        [Parameter(
+            ValueFromPipeline = $true,
+            ValueFromPipelineByPropertyName = $true)]
+        [switch]
+        $WelcomeMessageEnabled
     )
     begin {
+
         $BeginError = @()
         Write-Verbose "Checking prerequisites are loaded"
         #Verify connection to Exchange Online
@@ -93,6 +109,20 @@ function New-ModernDistributionGroup {
 
         if ($BeginError) {
             Write-Error $($BeginError -join " - ") -ErrorAction Stop
+        }
+
+        $MissingScopes = @()
+        #Verify required MG Graph Scopes are included
+        $MGGraphContext = (Get-MgContext -ErrorAction SilentlyContinue)
+        if (-not ($MGGraphContext.Scopes -contains "Group.ReadWrite.All")) {
+            $MissingScopes += "Group.ReadWrite.All"
+        }
+        if (-not ($MGGraphContext.Scopes -contains "User.ReadWrite.All")) {
+            $MissingScopes += "User.ReadWrite.All"
+        }
+
+        if ($MissingScopes) {
+            Write-Error "Missing MGGraph Scopes [$($BeginError -join ', ')]" -ErrorAction Stop
         }
 
         function buildMailAlias([string]$Alias) {
@@ -120,9 +150,6 @@ function New-ModernDistributionGroup {
         $Alias = buildMailAlias -Alias $Name
         Write-Verbose "Mail alias is [$Alias]"
 
-        if (-not $PrimarySMTPAddress) {
-            $PrimarySmtpAddress = $Alias + '@contoso.com'
-        }
 
         Write-Verbose "Creating new DL with primary SMTP address [$PrimarySMTPAddress]"
 
@@ -136,13 +163,21 @@ function New-ModernDistributionGroup {
         }
         Write-Verbose "Running New-UnifiedGroup"
         
-        $NewGroup = New-UnifiedGroup @NewGroupSplat
-
-        Write-Verbose "Hide Welcome Message and hide from Outlook"
-        Set-UnifiedGroup -Identity $NewGroup.Id -UnifiedGroupWelcomeMessageEnabled:$false -HiddenFromExchangeClientsEnabled
-        Write-Verbose "Show in the GAL."
-        #This is necessary because the -HiddenFromExchangeClientsEnabled switch flips HiddenFromAddressListsEnabled to false.
-        Set-UnifiedGroup -Identity $NewGroup.Id -HiddenFromAddressListsEnabled:$false
+        $NewGroup = New-UnifiedGroup @NewGroupSplat 
+        if ($NewGroup.count -eq 0) {
+            Write-Error $Error[0].exception.message -ErrorAction Stop
+        }
+        if (-not $ShowInOutlook) {
+            Write-Verbose "Hide from Outlook"
+            Set-UnifiedGroup -Identity $NewGroup.Id -HiddenFromExchangeClientsEnabled
+            Write-Verbose "Show in the GAL"
+            #This is necessary because the -HiddenFromExchangeClientsEnabled switch flips HiddenFromAddressListsEnabled to false.
+            Set-UnifiedGroup -Identity $NewGroup.Id -HiddenFromAddressListsEnabled:$false
+        }
+        if (-not $WelcomeMessageEnabled) {
+            Write-Verbose "Hide Welcome Message"
+            Set-UnifiedGroup -Identity $NewGroup.Id -UnifiedGroupWelcomeMessageEnabled:$false
+        }
 
         if ($ProxyAddresses) {
             foreach ($ProxyAddress in $ProxyAddresses) {
@@ -186,4 +221,3 @@ function New-ModernDistributionGroup {
         Get-MGgroup -GroupId $NewGroup.ExternalDirectoryObjectId | Select-Object DisplayName, Mail, Description, MembershipRule
     }
 }
-
