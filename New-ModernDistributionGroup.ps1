@@ -190,7 +190,7 @@ function New-ModernDistributionGroup {
         }
 
         $Loop = 0
-        while (-not $MGGroup -or ($Loop -gt 12)) {
+        while (($null -eq $MGGroup) -and ($Loop -lt 12)) {
             try { $MGGroup = Get-MGgroup -GroupId $NewGroup.ExternalDirectoryObjectId -ErrorAction Stop }
             catch { <# Empty catch #> }
             if (-not $MGGroup) {
